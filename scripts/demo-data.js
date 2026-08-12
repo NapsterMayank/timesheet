@@ -41,18 +41,24 @@ export function demoData({ days = 7 } = {}) {
     for (const p of PROJECTS) {
       const runs = Math.round(p.runs * share);
       if (runs === 0) continue;
-      const tokensIn = Math.round(p.tin * share);
+      const newIn = Math.round(p.tin * share);
       const tokensOut = Math.round(p.tout * share);
+      // Cache replay dwarfs real work in practice, roughly 20-100x. The demo
+      // keeps that ratio so the screenshots don't imply a tidier picture than
+      // the tool actually shows.
+      const cacheRead = newIn * 42;
       rows.push({
         project: p.project,
         day,
         agentRuns: runs,
         tasks: Math.round(p.tasks * share),
-        tokensIn,
+        tokensIn: Math.round(newIn * 0.01),
+        cacheCreation: Math.round(newIn * 0.99),
+        newIn,
+        cacheRead,
         tokensOut,
-        cacheRead: 0,
-        cacheCreation: 0,
-        totalTokens: tokensIn + tokensOut,
+        totalTokens: newIn + tokensOut,
+        processedTokens: newIn + cacheRead + tokensOut,
       });
     }
   });
@@ -68,9 +74,24 @@ export function demoData({ days = 7 } = {}) {
   });
 
   const scale = days / DAYS.length;
-  const tools = TOOLS.map((t) => ({ tool: t.tool, count: Math.round(t.count * scale) })).filter(
-    (t) => t.count > 0
-  );
+  const tools = TOOLS.map((t) => ({
+    tool: t.tool,
+    count: Math.round(t.count * scale),
+    tokens: Math.round(t.count * scale * 1850),
+  })).filter((t) => t.count > 0);
 
-  return { rows, daily, tools };
+  const totalWork = rows.reduce((a, r) => a + r.totalTokens, 0);
+  const agents = [
+    { sessionId: "a41f9c2e-checkout-refactor", isSubagent: false, share: 0.34, tasks: 412 },
+    { sessionId: "c77b0d15-schema-migration", isSubagent: false, share: 0.24, tasks: 288 },
+    { sessionId: "agent-explore-b3d9", isSubagent: true, share: 0.18, tasks: 205 },
+    { sessionId: "e903a7f4-landing-copy", isSubagent: false, share: 0.14, tasks: 161 },
+    { sessionId: "agent-review-1a2c", isSubagent: true, share: 0.1, tasks: 118 },
+  ].map((a) => ({
+    ...a,
+    tasks: Math.max(1, Math.round(a.tasks * scale)),
+    totalTokens: Math.round(totalWork * a.share),
+  }));
+
+  return { rows, daily, tools, agents };
 }

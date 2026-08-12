@@ -60,6 +60,22 @@ function dayOf(ts) {
   return String(ts).slice(0, 10);
 }
 
+// The most useful single field from a tool call: which file, which command,
+// which pattern. Kept short, and never the whole input blob.
+function describeTarget(name, input) {
+  if (!input || typeof input !== "object") return null;
+  const first = (v) => (typeof v === "string" ? v.split("\n")[0].slice(0, 200) : null);
+
+  if (input.file_path) return first(input.file_path);
+  if (input.command) return first(input.command);
+  if (input.pattern) return first(input.pattern);
+  if (input.url) return first(input.url);
+  if (input.query) return first(input.query);
+  if (input.path) return first(input.path);
+  if (name === "Agent" || name === "Task") return first(input.description);
+  return null;
+}
+
 function processLine(raw, ctx) {
   let entry;
   try {
@@ -73,13 +89,20 @@ function processLine(raw, ctx) {
   const ts = entry.timestamp || entry.message?.timestamp;
   const day = dayOf(ts);
 
+  // Claude Code splits one API message across several transcript lines, one per
+  // content block, and repeats the identical usage object on every one of them.
+  // message.id identifies the real message; the primary key on it means the
+  // repeats collapse into a single row instead of multiplying the token count.
+  const messageId = entry.message.id;
   const usage = entry.message.usage;
-  if (usage) {
+  if (usage && messageId) {
     insertUsageEvent({
+      message_id: messageId,
       project: ctx.project,
       session_id: ctx.sessionId,
       day,
       ts: ts || null,
+      model: entry.message.model || null,
       input_tokens: usage.input_tokens || 0,
       output_tokens: usage.output_tokens || 0,
       cache_read_tokens: usage.cache_read_input_tokens || 0,
@@ -91,16 +114,22 @@ function processLine(raw, ctx) {
   const content = entry.message.content;
   if (Array.isArray(content)) {
     for (const block of content) {
-      if (block.type === "tool_use") {
-        insertToolEvent({
-          project: ctx.project,
-          session_id: ctx.sessionId,
-          day,
-          ts: ts || null,
-          tool_name: block.name || "unknown",
-          is_subagent: ctx.isSubagent ? 1 : 0,
-        });
-      }
+      if (block.type !== "tool_use") continue;
+      // Same story as usage: a repeated line repeats its tool_use blocks, and
+      // tool_use.id is stable across those repeats.
+      if (!block.id) continue;
+      insertToolEvent({
+        tool_use_id: block.id,
+        message_id: messageId || null,
+        project: ctx.project,
+        session_id: ctx.sessionId,
+        day,
+        ts: ts || null,
+        tool_name: block.name || "unknown",
+        target: describeTarget(block.name, block.input),
+        subagent_type: block.input?.subagent_type || null,
+        is_subagent: ctx.isSubagent ? 1 : 0,
+      });
     }
   }
 }

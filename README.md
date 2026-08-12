@@ -124,9 +124,35 @@ session that spun up 3 subagents shows as 4 runs.
 **Task** — one tool call (a `tool_use` block) anywhere in the transcript. Read,
 Edit, Bash, Grep, whatever the agent reached for.
 
-**Tokens** — summed straight from each assistant message's `usage` field, input
-and output tracked separately. Cache read and creation tokens are captured too,
-and live in the sqlite database even though the terminal table doesn't show them.
+**Tokens** — this is where most usage tools quietly mislead you, so:
+
+| Shown as | Field | What it really is |
+|---|---|---|
+| **new input** | `input_tokens` + `cache_creation_input_tokens` | Context the model genuinely read for the first time |
+| **output** | `output_tokens` | What the model wrote |
+| **real work** | the two above | The honest headline number |
+| **cache replay** | `cache_read_input_tokens` | The same context re-sent every single turn |
+
+`input_tokens` on its own is only the uncached sliver, often literally single
+digits, so reporting it as "tokens in" understates reality by orders of
+magnitude. `cache_read` is the opposite trap: it's real and it's billed, but
+it's mostly the same bytes replayed hundreds of times, so leading with it makes
+a 12M-token week look like 680M. aitimesheet reports both, separately, and
+leads with real work.
+
+Two counting traps this tool handles that a naive line-by-line reader doesn't:
+
+- Claude Code writes one API message as **several transcript lines**, one per
+  content block, repeating the identical `usage` on each. Summing per line
+  double or triple counts. Rows are keyed on `message.id`, so repeats collapse.
+- Tool calls are keyed on `tool_use.id` for the same reason, which also makes
+  rescanning the same bytes a no-op.
+
+**Per task and per agent** — each tool call is joined back to the message that
+paid for it, so you get cost per tool. When one message fires several tool calls,
+its cost is split evenly across them: an allocation, not a measurement, since the
+API doesn't bill per tool call. Agent runs are grouped per session, with subagent
+transcripts tracked separately.
 
 ---
 

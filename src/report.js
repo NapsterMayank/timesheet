@@ -23,8 +23,8 @@ export function printReport({ days = 1 } = {}) {
   }
 
   const table = new Table({
-    head: ["Day", "Project", "Agent Runs", "Tasks", "Tokens In", "Tokens Out", "Total Tokens"].map((h) =>
-      chalk.bold(h)
+    head: ["Day", "Project", "Agent Runs", "Tasks", "New Input", "Output", "Real Work", "Cache Replay"].map(
+      (h) => chalk.bold(h)
     ),
     style: { head: [], border: [] },
   });
@@ -32,6 +32,7 @@ export function printReport({ days = 1 } = {}) {
   let totalRuns = 0;
   let totalTasks = 0;
   let totalTokens = 0;
+  let totalCache = 0;
 
   for (const r of rows) {
     table.push([
@@ -39,21 +40,28 @@ export function printReport({ days = 1 } = {}) {
       r.project,
       fmtNum(r.agentRuns),
       fmtNum(r.tasks),
-      fmtNum(r.tokensIn),
+      fmtNum(r.newIn),
       fmtNum(r.tokensOut),
       fmtNum(r.totalTokens),
+      fmtNum(r.cacheRead),
     ]);
     totalRuns += r.agentRuns;
     totalTasks += r.tasks;
     totalTokens += r.totalTokens;
+    totalCache += r.cacheRead;
   }
 
   console.log(table.toString());
   console.log(
     chalk.dim(
-      `${rows.length} project-day rows, ${fmtNum(totalRuns)} agent runs, ${fmtNum(totalTasks)} tasks, ${fmtNum(
-        totalTokens
-      )} tokens total.`
+      `${rows.length} project-day rows, ${fmtNum(totalRuns)} agent runs, ${fmtNum(totalTasks)} tasks, ` +
+        `${fmtNum(totalTokens)} tokens of real work.`
+    )
+  );
+  console.log(
+    chalk.dim(
+      `Plus ${fmtNum(totalCache)} cache-replay tokens: context re-read every turn, billed at the ` +
+        `cache rate, mostly the same bytes over and over.`
     )
   );
 }

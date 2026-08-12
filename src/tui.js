@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { getSummary, getDailyTotals, getToolBreakdown } from "./db.js";
+import { getSummary, getDailyTotals, getToolBreakdown, getAgentRuns } from "./db.js";
 import { scan } from "./scanner.js";
 
 // ---------------------------------------------------------------------------
@@ -178,19 +178,21 @@ function totalsPanel(rows, width) {
     (acc, r) => {
       acc.runs += r.agentRuns;
       acc.tasks += r.tasks;
-      acc.tokensIn += r.tokensIn;
+      acc.newIn += r.newIn;
       acc.tokensOut += r.tokensOut;
+      acc.cacheRead += r.cacheRead;
       return acc;
     },
-    { runs: 0, tasks: 0, tokensIn: 0, tokensOut: 0 }
+    { runs: 0, tasks: 0, newIn: 0, tokensOut: 0, cacheRead: 0 }
   );
 
   const cells = [
     [fmtNum(t.runs), "agent runs"],
     [fmtNum(t.tasks), "tasks"],
-    [fmtCompact(t.tokensIn), "tokens in"],
-    [fmtCompact(t.tokensOut), "tokens out"],
-    [fmtCompact(t.tokensIn + t.tokensOut), "total tokens"],
+    [fmtCompact(t.newIn), "new input"],
+    [fmtCompact(t.tokensOut), "output"],
+    [fmtCompact(t.newIn + t.tokensOut), "real work"],
+    [fmtCompact(t.cacheRead), "cache replay"],
   ];
 
   const inner = width - 2;
@@ -260,20 +262,45 @@ function toolsPanel(tools, width) {
   const max = tools[0].count;
   const inner = width - 2;
   const nameW = Math.min(20, Math.max(10, Math.floor(inner * 0.22)));
-  const countW = 9;
-  const barW = Math.max(6, inner - nameW - countW - 4);
+  const statsW = 22; // 8 (calls) + 14 (tokens)
+  const barW = Math.max(6, inner - nameW - statsW - 4);
 
   const lines = [""];
   tools.forEach((t, i) => {
     const color = BAR_COLORS[i % BAR_COLORS.length];
     const name = padEnd(c.value(truncate(t.tool, nameW)), nameW);
     const b = padEnd(bar(t.count, max, barW, color), barW);
-    const count = padStart(c.cyan(fmtNum(t.count)), countW);
-    lines.push(` ${name} ${b} ${count}`);
+    const stats =
+      padStart(c.cyan(fmtNum(t.count)), 8) + padStart(c.dim(fmtCompact(t.tokens) + " tok"), 14);
+    lines.push(` ${name} ${b} ${stats}`);
   });
   lines.push("");
 
   return box("TOOLS THE AGENTS REACHED FOR", lines, width);
+}
+
+function agentsPanel(agents, width) {
+  if (agents.length === 0) return [];
+
+  const max = agents[0].totalTokens;
+  const inner = width - 2;
+  const nameW = Math.min(24, Math.max(14, Math.floor(inner * 0.26)));
+  const statsW = 24;
+  const barW = Math.max(6, inner - nameW - statsW - 4);
+
+  const lines = [""];
+  agents.forEach((a, i) => {
+    const color = BAR_COLORS[i % BAR_COLORS.length];
+    const kind = a.isSubagent ? c.amber("sub ") : c.dim("main");
+    const label = `${kind} ${c.value(truncate(a.sessionId, nameW - 5))}`;
+    const b = padEnd(bar(a.totalTokens, max, barW, color), barW);
+    const stats =
+      padStart(c.cyan(fmtCompact(a.totalTokens)), 8) + padStart(c.dim(`${fmtNum(a.tasks)} tasks`), 16);
+    lines.push(` ${padEnd(label, nameW)} ${b} ${stats}`);
+  });
+  lines.push("");
+
+  return box("AGENT RUNS BY COST", lines, width);
 }
 
 function emptyPanel(width) {
@@ -320,6 +347,8 @@ function buildFrame(state, width) {
     }
     lines.push(...projectsPanel(state.rows, width));
     lines.push("");
+    lines.push(...agentsPanel(state.agents, width));
+    lines.push("");
     lines.push(...toolsPanel(state.tools, width));
   }
 
@@ -346,6 +375,7 @@ function loadData(state) {
   state.rows = getSummary({ sinceDay });
   state.daily = getDailyTotals({ sinceDay });
   state.tools = getToolBreakdown({ sinceDay, limit: 8 });
+  state.agents = getAgentRuns({ sinceDay, limit: 6 });
 }
 
 // Renders one frame and returns it as a plain string, without touching the
@@ -353,7 +383,7 @@ function loadData(state) {
 // real data through the exact same code path the live TUI uses.
 export function captureFrame({ range = "7", width = 100, data = null } = {}) {
   const rangeKey = RANGES[range] ? range : "7";
-  const state = { rangeKey, rows: [], daily: [], tools: [], scanning: false, ...(data || {}) };
+  const state = { rangeKey, rows: [], daily: [], tools: [], agents: [], scanning: false, ...(data || {}) };
   if (!data) loadData(state);
   return buildFrame(state, width).join("\n");
 }
@@ -369,7 +399,7 @@ export function startTui({ range = "7" } = {}) {
   }
 
   const rangeKey = RANGES[range] ? range : "7";
-  const state = { rangeKey, rows: [], daily: [], tools: [], scanning: false };
+  const state = { rangeKey, rows: [], daily: [], tools: [], agents: [], scanning: false };
 
   let closed = false;
   const cleanup = () => {

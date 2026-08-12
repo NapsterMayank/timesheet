@@ -116,8 +116,8 @@ function toHtml(frame, { title }) {
 }
 
 const shots = [
-  { name: "tui-7d", range: "7", days: 7, width: 100, title: "aitimesheet tui - last 7 days" },
-  { name: "tui-today", range: "1", days: 1, width: 92, title: "aitimesheet tui - today" },
+  { name: "tui-7d", range: "7", days: 7, width: 104, title: "aitimesheet tui - last 7 days" },
+  { name: "tui-today", range: "1", days: 1, width: 98, title: "aitimesheet tui - today" },
 ];
 
 mkdirSync(join(ROOT, "docs"), { recursive: true });
