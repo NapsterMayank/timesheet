@@ -1,0 +1,45 @@
+{
+  "name": "aitimesheet",
+  "version": "0.1.0",
+  "description": "Local, private timesheet for Claude Code agents: sessions run, tasks done, tokens used. Reads only from ~/.claude/projects on your own machine, nothing leaves it.",
+  "type": "module",
+  "bin": {
+    "aitimesheet": "./bin/aitimesheet.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "claude-code",
+    "ai-agents",
+    "usage-tracking",
+    "tokens",
+    "timesheet",
+    "observability",
+    "local-first",
+    "privacy",
+    "cli"
+  ],
+  "homepage": "https://github.com/NapsterMayank/timesheet#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NapsterMayank/timesheet.git"
+  },
+  "bugs": {
+    "url": "https://github.com/NapsterMayank/timesheet/issues"
+  },
+  "author": "NapsterMayank",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "cli-table3": "^0.6.5",
+    "chalk": "^5.3.0",
+    "express": "^4.19.2"
+  }
+}
