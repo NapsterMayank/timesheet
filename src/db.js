@@ -77,6 +77,68 @@ export function insertToolEvent(ev) {
     .run(ev);
 }
 
+// One row per day across all projects, oldest first. Feeds the TUI sparkline.
+export function getDailyTotals({ sinceDay } = {}) {
+  const db = getDb();
+  const params = sinceDay ? { sinceDay } : {};
+  const where = sinceDay ? "day >= @sinceDay" : "1=1";
+
+  const usage = db
+    .prepare(
+      `SELECT day,
+              COUNT(DISTINCT session_id) AS agent_runs,
+              SUM(input_tokens) AS tokens_in,
+              SUM(output_tokens) AS tokens_out
+       FROM usage_events
+       WHERE ${where}
+       GROUP BY day`
+    )
+    .all(params);
+
+  const tools = db
+    .prepare(
+      `SELECT day, COUNT(*) AS tasks
+       FROM tool_events
+       WHERE ${where}
+       GROUP BY day`
+    )
+    .all(params);
+
+  const taskMap = new Map(tools.map((t) => [t.day, t.tasks]));
+
+  return usage
+    .map((u) => ({
+      day: u.day,
+      agentRuns: u.agent_runs,
+      tasks: taskMap.get(u.day) || 0,
+      totalTokens: (u.tokens_in || 0) + (u.tokens_out || 0),
+    }))
+    .sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
+}
+
+// Which tools the agents actually reached for, most-used first.
+export function getToolBreakdown({ sinceDay, limit = 8 } = {}) {
+  const db = getDb();
+  const params = { limit };
+  let where = "tool_name IS NOT NULL";
+  if (sinceDay) {
+    where += " AND day >= @sinceDay";
+    params.sinceDay = sinceDay;
+  }
+
+  return db
+    .prepare(
+      `SELECT tool_name AS tool, COUNT(*) AS count
+       FROM tool_events
+       WHERE ${where}
+       GROUP BY tool_name
+       ORDER BY count DESC
+       LIMIT @limit`
+    )
+    .all(params)
+    .map((r) => ({ tool: r.tool, count: r.count }));
+}
+
 // Summary: one row per project per day, for the report table and dashboard grid.
 export function getSummary({ sinceDay, untilDay } = {}) {
   const db = getDb();

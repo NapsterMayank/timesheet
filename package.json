@@ -6,6 +6,9 @@
   "bin": {
     "aitimesheet": "./bin/aitimesheet.js"
   },
+  "scripts": {
+    "screenshot": "node scripts/screenshot.js"
+  },
   "files": [
     "bin",
     "src",

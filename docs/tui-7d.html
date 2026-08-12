@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>aitimesheet tui - last 7 days</title>
+<style>
+  html, body { margin: 0; background: #0d0e12; }
+  body { display: inline-block; padding: 18px; }
+  pre {
+    margin: 0;
+    padding: 22px 24px;
+    background: #15161c;
+    color: #c8ccd6;
+    border-radius: 10px;
+    font-family: 'DejaVu Sans Mono', 'Cascadia Mono', Consolas, Menlo, 'Liberation Mono', ui-monospace, monospace;
+    font-size: 14px;
+    line-height: 1.28;
+    white-space: pre;
+    letter-spacing: 0;
+  }
+</style>
+<pre id="shot">
+🦄 <span style="color:rgb(199,146,234);font-weight:700">aitimesheet</span><span style="color:rgb(90,98,114)"> · last 7 days · local only, nothing sent anywhere</span>                            <span style="color:rgb(90,98,114)">06:44:38</span>
+
+<span style="color:rgb(107,91,149)">╭</span><span style="color:rgb(199,146,234);font-weight:700"> TOTALS </span><span style="color:rgb(107,91,149)">──────────────────────────────────────────────────────────────────────────────────────</span> 🦄 <span style="color:rgb(107,91,149)">╮</span>
+<span style="color:rgb(107,91,149)">│</span>                                                                                                  <span style="color:rgb(107,91,149)">│</span>
+<span style="color:rgb(107,91,149)">│</span>  <span style="color:rgb(230,230,230);font-weight:700">89</span>                 <span style="color:rgb(230,230,230);font-weight:700">2,570</span>              <span style="color:rgb(230,230,230);font-weight:700">747K</span>               <span style="color:rgb(230,230,230);font-weight:700">4.54M</span>              <span style="color:rgb(230,230,230);font-weight:700">5.28M</span>               <span style="color:rgb(107,91,149)">│</span>
+<span style="color:rgb(107,91,149)">│</span>  <span style="color:rgb(127,140,154)">agent runs</span>         <span style="color:rgb(127,140,154)">tasks</span>              <span style="color:rgb(127,140,154)">tokens in</span>          <span style="color:rgb(127,140,154)">tokens out</span>         <span style="color:rgb(127,140,154)">total tokens</span>        <span style="color:rgb(107,91,149)">│</span>
+<span style="color:rgb(107,91,149)">│</span>                                                                                                  <span style="color:rgb(107,91,149)">│</span>
+<span style="color:rgb(107,91,149)">╰</span><span style="color:rgb(107,91,149)">──────────────────────────────────────────────────────────────────────────────────────────────────</span><span style="color:rgb(107,91,149)">╯</span>
+
+<span style="color:rgb(107,91,149)">╭</span><span style="color:rgb(199,146,234);font-weight:700"> TOKENS / DAY </span><span style="color:rgb(107,91,149)">────────────────────────────────────────────────────────────────────────────────────</span><span style="color:rgb(107,91,149)">╮</span>
+<span style="color:rgb(107,91,149)">│</span>                                                                                                  <span style="color:rgb(107,91,149)">│</span>
+<span style="color:rgb(107,91,149)">│</span>  <span style="color:rgb(139,233,253)">▄▄▄▄▅▅▅▅▅▅▅▅▇▇▇▇████▃▃▃▃▆▆▆▆</span><span style="color:rgb(90,98,114)">   2026-08-05 → 2026-08-11   peak 1.18M on 2026-08-09</span>               <span style="color:rgb(107,91,149)">│</span>
+<span style="color:rgb(107,91,149)">│</span>                                                                                                  <span style="color:rgb(107,91,149)">│</span>
+<span style="color:rgb(107,91,149)">╰</span><span style="color:rgb(107,91,149)">──────────────────────────────────────────────────────────────────────────────────────────────────</span><span style="color:rgb(107,91,149)">╯</span>
+
+<span style="color:rgb(107,91,149)">╭</span><span style="color:rgb(199,146,234);font-weight:700"> PROJECTS </span><span style="color:rgb(107,91,149)">────────────────────────────────────────────────────────────────────────────────────────</span><span style="color:rgb(107,91,149)">╮</span>
+<span style="color:rgb(107,91,149)">│</span>                                                                                                  <span style="color:rgb(107,91,149)">│</span>
+<span style="color:rgb(107,91,149)">│</span> <span style="color:rgb(230,230,230);font-weight:700">acme-checkout-api</span>          <span style="color:rgb(255,121,198)">██████████████████████████████████████</span>    <span style="color:rgb(139,233,253)">3.04M</span>   <span style="color:rgb(90,98,114)">42 runs</span> <span style="color:rgb(90,98,114)">1,284 tasks</span> <span style="color:rgb(107,91,149)">│</span>
+<span style="color:rgb(107,91,149)">│</span> <span style="color:rgb(230,230,230);font-weight:700">marketing-site</span>             <span style="color:rgb(189,147,249)">█████████████</span>                             <span style="color:rgb(139,233,253)">1.04M</span>   <span style="color:rgb(90,98,114)">18 runs</span>   <span style="color:rgb(90,98,114)">517 tasks</span> <span style="color:rgb(107,91,149)">│</span>
+<span style="color:rgb(107,91,149)">│</span> <span style="color:rgb(230,230,230);font-weight:700">data-pipeline</span>              <span style="color:rgb(139,233,253)">███████▌</span>                                   <span style="color:rgb(139,233,253)">610K</span>   <span style="color:rgb(90,98,114)">12 runs</span>   <span style="color:rgb(90,98,114)">388 tasks</span> <span style="color:rgb(107,91,149)">│</span>
+<span style="color:rgb(107,91,149)">│</span> <span style="color:rgb(230,230,230);font-weight:700">mobile-app</span>                 <span style="color:rgb(80,250,123)">████▋</span>                                      <span style="color:rgb(139,233,253)">379K</span>    <span style="color:rgb(90,98,114)">9 runs</span>   <span style="color:rgb(90,98,114)">240 tasks</span> <span style="color:rgb(107,91,149)">│</span>
+<span style="color:rgb(107,91,149)">│</span> <span style="color:rgb(230,230,230);font-weight:700">infra-terraform</span>            <span style="color:rgb(241,250,140)">██▎</span>                                        <span style="color:rgb(139,233,253)">190K</span>    <span style="color:rgb(90,98,114)">6 runs</span>   <span style="color:rgb(90,98,114)">122 tasks</span> <span style="color:rgb(107,91,149)">│</span>
+<span style="color:rgb(107,91,149)">│</span> <span style="color:rgb(230,230,230);font-weight:700">docs</span>                       <span style="color:rgb(255,121,198)">▎</span>                                           <span style="color:rgb(139,233,253)">23K</span>    <span style="color:rgb(90,98,114)">2 runs</span>    <span style="color:rgb(90,98,114)">19 tasks</span> <span style="color:rgb(107,91,149)">│</span>
+<span style="color:rgb(107,91,149)">│</span>                                                                                                  <span style="color:rgb(107,91,149)">│</span>
+<span style="color:rgb(107,91,149)">╰</span><span style="color:rgb(107,91,149)">──────────────────────────────────────────────────────────────────────────────────────────────────</span><span style="color:rgb(107,91,149)">╯</span>
+
+<span style="color:rgb(107,91,149)">╭</span><span style="color:rgb(199,146,234);font-weight:700"> TOOLS THE AGENTS REACHED FOR </span><span style="color:rgb(107,91,149)">────────────────────────────────────────────────────────────────────</span><span style="color:rgb(107,91,149)">╮</span>
+<span style="color:rgb(107,91,149)">│</span>                                                                                                  <span style="color:rgb(107,91,149)">│</span>
+<span style="color:rgb(107,91,149)">│</span> <span style="color:rgb(230,230,230);font-weight:700">Bash</span>                 <span style="color:rgb(255,121,198)">█████████████████████████████████████████████████████████████████</span>     <span style="color:rgb(139,233,253)">2,140</span> <span style="color:rgb(107,91,149)">│</span>
+<span style="color:rgb(107,91,149)">│</span> <span style="color:rgb(230,230,230);font-weight:700">Edit</span>                 <span style="color:rgb(189,147,249)">██████████████████████████████████████████████████▌</span>                   <span style="color:rgb(139,233,253)">1,663</span> <span style="color:rgb(107,91,149)">│</span>
+<span style="color:rgb(107,91,149)">│</span> <span style="color:rgb(230,230,230);font-weight:700">Read</span>                 <span style="color:rgb(139,233,253)">████████████████████████████████████</span>                                  <span style="color:rgb(139,233,253)">1,189</span> <span style="color:rgb(107,91,149)">│</span>
+<span style="color:rgb(107,91,149)">│</span> <span style="color:rgb(230,230,230);font-weight:700">Write</span>                <span style="color:rgb(80,250,123)">██████████████████▎</span>                                                     <span style="color:rgb(139,233,253)">604</span> <span style="color:rgb(107,91,149)">│</span>
+<span style="color:rgb(107,91,149)">│</span> <span style="color:rgb(230,230,230);font-weight:700">Grep</span>                 <span style="color:rgb(241,250,140)">██████████</span>                                                              <span style="color:rgb(139,233,253)">331</span> <span style="color:rgb(107,91,149)">│</span>
+<span style="color:rgb(107,91,149)">│</span> <span style="color:rgb(230,230,230);font-weight:700">Agent</span>                <span style="color:rgb(255,121,198)">█████▋</span>                                                                  <span style="color:rgb(139,233,253)">188</span> <span style="color:rgb(107,91,149)">│</span>
+<span style="color:rgb(107,91,149)">│</span> <span style="color:rgb(230,230,230);font-weight:700">Glob</span>                 <span style="color:rgb(189,147,249)">████▎</span>                                                                   <span style="color:rgb(139,233,253)">141</span> <span style="color:rgb(107,91,149)">│</span>
+<span style="color:rgb(107,91,149)">│</span> <span style="color:rgb(230,230,230);font-weight:700">WebFetch</span>             <span style="color:rgb(139,233,253)">█▉</span>                                                                       <span style="color:rgb(139,233,253)">62</span> <span style="color:rgb(107,91,149)">│</span>
+<span style="color:rgb(107,91,149)">│</span>                                                                                                  <span style="color:rgb(107,91,149)">│</span>
+<span style="color:rgb(107,91,149)">╰</span><span style="color:rgb(107,91,149)">──────────────────────────────────────────────────────────────────────────────────────────────────</span><span style="color:rgb(107,91,149)">╯</span>
+
+ <span style="color:rgb(255,121,198)">[q]</span><span style="color:rgb(90,98,114)"> quit</span><span style="color:rgb(90,98,114)">   </span><span style="color:rgb(255,121,198)">[r]</span><span style="color:rgb(90,98,114)"> rescan</span><span style="color:rgb(90,98,114)">   </span><span style="color:rgb(255,121,198)">[1]</span><span style="color:rgb(90,98,114)"> today</span><span style="color:rgb(90,98,114)">   </span><span style="color:rgb(255,121,198)">[7]</span><span style="color:rgb(90,98,114)"> 7 days</span><span style="color:rgb(90,98,114)">   </span><span style="color:rgb(255,121,198)">[3]</span><span style="color:rgb(90,98,114)"> 30 days</span></pre>
