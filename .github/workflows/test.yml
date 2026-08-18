@@ -1,0 +1,57 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # better-sqlite3 is a native module, so the matrix covers the platforms
+        # and Node versions where a prebuild might be missing and it has to
+        # compile from source.
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [18, 20, 22]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Catches the class of bug where the published tarball is broken even
+      # though the tests pass: a dropped bin entry, a missing file in `files`,
+      # a shebang that never made it. Installs the real tarball and runs the
+      # real binary.
+      - name: install the packed tarball and run the CLI
+        run: |
+          npm pack
+          mkdir -p /tmp/install-test
+          mv aitimesheet-*.tgz /tmp/install-test/
+          cd /tmp/install-test
+          npm init -y
+          npm install ./aitimesheet-*.tgz
+          ./node_modules/.bin/aitimesheet --help
+          ./node_modules/.bin/aitimesheet timesheet --days 1
