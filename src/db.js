@@ -319,6 +319,43 @@ export function getAgentRuns({ sinceDay, untilDay, project, limit = 10 } = {}) {
     .slice(0, limit);
 }
 
+// Every timestamped event in one ordered stream, which is what the timesheet
+// needs to reconstruct a working day. Tool events carry what was worked on;
+// usage events carry no target but still mark "the agent was busy here", so
+// they keep the timeline dense between tool calls and stop a long thinking
+// stretch from looking like idle time.
+export function getRawEvents({ sinceDay, untilDay, project } = {}) {
+  const db = getDb();
+  const { where, params } = whereDays({ sinceDay, untilDay });
+  let filter = where;
+  if (project) {
+    filter += " AND project = @project";
+    params.project = project;
+  }
+
+  return db
+    .prepare(
+      `SELECT day, project, session_id, ts, tool_name, target, is_subagent
+       FROM tool_events
+       WHERE ${filter} AND ts IS NOT NULL
+       UNION ALL
+       SELECT day, project, session_id, ts, NULL AS tool_name, NULL AS target, is_subagent
+       FROM usage_events
+       WHERE ${filter} AND ts IS NOT NULL
+       ORDER BY ts`
+    )
+    .all(params)
+    .map((e) => ({
+      day: e.day,
+      project: e.project,
+      sessionId: e.session_id,
+      ts: e.ts,
+      toolName: e.tool_name,
+      target: e.target,
+      isSubagent: !!e.is_subagent,
+    }));
+}
+
 // Tokens grouped by model, which is what a cost breakdown needs.
 export function getModelBreakdown({ sinceDay, untilDay, project } = {}) {
   const db = getDb();

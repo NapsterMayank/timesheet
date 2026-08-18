@@ -96,6 +96,7 @@ prebuild, it compiles from source and needs a toolchain:
 |---|---|
 | `aitimesheet tui` | Live dashboard in your terminal. `--range 1\|7\|3` |
 | `aitimesheet report` | One-shot table. `--days N` for a wider window |
+| `aitimesheet timesheet` | Time and tasks per project per day. `--csv` to export |
 | `aitimesheet dashboard` | Web dashboard on `127.0.0.1:4848`. `--port P` |
 | `aitimesheet scan` | Read new transcript lines into the local database |
 
@@ -112,6 +113,57 @@ $ aitimesheet report --days 7
 │ 2026-08-11 │ marketing-site   │ 3          │ 82    │ 25,881    │ 140,299    │ 166,180      │
 └────────────┴──────────────────┴────────────┴───────┴───────────┴────────────┴──────────────┘
 ```
+
+---
+
+## Filling in an actual timesheet
+
+The other commands count things. This one estimates time, which is a different
+kind of claim:
+
+```console
+$ aitimesheet timesheet --days 2
+2026-08-18
+  acme-checkout-api             3h 00m  200 tasks, 2 runs 14:11-02:15
+    - 1h 18m  shell commands
+    -    37m  docker commands
+    -    29m  python commands
+    -     8m  api/routes  checkout.py, webhooks.py
+    -     6m  vitest commands
+    -     3m  6 smaller items
+  marketing-site                   23m  28 tasks, 1 runs 01:02-02:15
+    -    14m  node commands
+    -     8m  site/src  layout.tsx, pricing.tsx
+
+3h 23m of agent-active time across 2 project-day rows.
+```
+
+| Flag | What it does |
+|---|---|
+| `--day YYYY-MM-DD` | A single day. Defaults to today |
+| `--days N` | The last N days instead of one |
+| `--project NAME` | Only that project |
+| `--idle M` | Gaps longer than M minutes count as breaks. Default 15 |
+| `--csv` | CSV on stdout: one row per work item, day totals repeated |
+
+**How the time is worked out.** First-to-last wall clock would bill your lunch,
+so time is summed gap by gap between consecutive events, and any gap longer than
+`--idle` is **dropped entirely** rather than clamped. Clamping would quietly
+invent 15 minutes every time you stepped away, which across a week is hours of
+fiction. Time is attributed to whatever was in flight when the gap started, so a
+four minute pause after opening a file lands on that file.
+
+**How tasks are grouped.** File reads and edits group by directory, because the
+useful line is "worked on the scanner", not "opened db.js" twelve times. Shell
+work splits by the program being run (`git`, `docker`, `pytest`); utility
+commands like `cat` and `ls` stay pooled in one line rather than becoming twenty
+meaningless rows.
+
+**What it is not.** This measures *agent-active* time, not your time. The gaps
+that survive include you reading a diff, which is usually what you want on a
+timesheet, and also include you glancing at another window, which isn't. It's a
+well-grounded estimate to review and adjust, not a stopwatch. Don't bill it to a
+client unread.
 
 ---
 
@@ -181,8 +233,9 @@ the above yourself, it won't take long.
 - [ ] An importable logger for agents built on the Claude Agent SDK / API, which
       don't write to `~/.claude/projects`, so custom agents land in the same database
 - [ ] Per-model and per-cost breakdowns
-- [ ] CSV export
+- [x] CSV export (`aitimesheet timesheet --csv`)
 - [ ] Weekly summary you can drop into a standup
+- [ ] Project name aliases, so `D--work-acme-api` reads as `Acme API`
 
 ---
 
