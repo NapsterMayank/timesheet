@@ -93,5 +93,54 @@ export function demoData({ days = 7 } = {}) {
     totalTokens: Math.round(totalWork * a.share),
   }));
 
-  return { rows, daily, tools, agents };
+  // Timesheet rows, in the shape buildTimesheet() returns. Hours are derived
+  // from the day's task count at a plausible few minutes per task, so the
+  // screenshots show a believable working day rather than a rounded fiction.
+  const WORK_ITEMS = {
+    "acme-checkout-api": [
+      { label: "api/checkout", weight: 0.34, files: ["session.py", "webhooks.py", "refunds.py"] },
+      { label: "pytest commands", weight: 0.24, files: [] },
+      { label: "api/models", weight: 0.18, files: ["order.py", "payment.py"] },
+      { label: "git commands", weight: 0.13, files: [] },
+      { label: "shell commands", weight: 0.11, files: [] },
+    ],
+    "marketing-site": [
+      { label: "site/pages", weight: 0.42, files: ["pricing.tsx", "index.tsx"] },
+      { label: "npm commands", weight: 0.31, files: [] },
+      { label: "site/components", weight: 0.27, files: ["Hero.tsx", "Nav.tsx"] },
+    ],
+    "data-pipeline": [
+      { label: "pipeline/jobs", weight: 0.48, files: ["ingest.py", "transform.py"] },
+      { label: "docker commands", weight: 0.29, files: [] },
+      { label: "searching the codebase", weight: 0.23, files: [] },
+    ],
+  };
+  const DEFAULT_ITEMS = [
+    { label: "shell commands", weight: 0.55, files: [] },
+    { label: "searching the codebase", weight: 0.45, files: [] },
+  ];
+
+  const sheet = rows.map((r) => {
+    const activeMs = Math.round(r.tasks * 2.4 * 60_000);
+    const items = (WORK_ITEMS[r.project] || DEFAULT_ITEMS).map((it) => ({
+      label: it.label,
+      ms: Math.round(activeMs * it.weight),
+      calls: Math.max(1, Math.round(r.tasks * it.weight)),
+      files: it.files,
+    }));
+    return {
+      day: r.day,
+      project: r.project,
+      activeMs,
+      overlapMs: 0,
+      tasks: r.tasks,
+      sessions: r.agentRuns,
+      firstTs: `${r.day}T09:12:00.000Z`,
+      lastTs: `${r.day}T17:48:00.000Z`,
+      totalTokens: r.totalTokens,
+      items,
+    };
+  });
+
+  return { rows, daily, tools, agents, sheet };
 }
