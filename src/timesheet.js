@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { getRawEvents, getSummary } from "./db.js";
+import { getRawEvents, getSummary, getSessionTitles } from "./db.js";
 
 // ---------------------------------------------------------------------------
 // The timesheet view: what got worked on, and roughly for how long.
@@ -102,32 +102,122 @@ function shellVerb(command) {
   return null;
 }
 
-// Which work item an event belongs to. File edits and reads group by directory,
-// because a timesheet line is "worked on the scanner", not "opened db.js, then
-// opened db.js again". Everything else groups by the kind of work it is.
+// What kind of work a file belongs to, judged by where it lives and what it is.
+// Order matters: a test file under components/ is testing, not frontend, and a
+// .yml under .github/ is deployment, not config.
+//
+// Paths are strong evidence and this stays deliberately on the safe side of
+// them. Nothing here guesses at *intent* — a transcript cannot tell a new
+// endpoint from a fixed one, and a timesheet that confidently mislabels work is
+// worse than one that says "Code changes".
+const LAYERS = [
+  {
+    key: "tests",
+    label: "Testing",
+    test: (p) => /(^|\/)(__tests__|tests?|spec|e2e)\//i.test(p) || /\.(test|spec)\.[a-z]+$/i.test(p),
+  },
+  {
+    key: "docs",
+    label: "Documentation",
+    test: (p) => /\.(md|mdx|rst|adoc)$/i.test(p) || /(^|\/)docs?\//i.test(p),
+  },
+  {
+    key: "infra",
+    label: "Infrastructure & deployment",
+    test: (p) =>
+      /(^|\/)(\.github|\.gitlab|k8s|kubernetes|deploy|infra|terraform|ansible|helm)\//i.test(p) ||
+      /(dockerfile[^/]*|docker-compose\.ya?ml|\.tf|\.tfvars|jenkinsfile)$/i.test(p),
+  },
+  {
+    key: "db",
+    label: "Database & migrations",
+    test: (p) => /(^|\/)(migrations?|prisma|seeds?)\//i.test(p) || /\.(sql|prisma)$/i.test(p),
+  },
+  {
+    key: "frontend",
+    label: "Frontend work",
+    test: (p) =>
+      /\.(tsx|jsx|vue|svelte|css|scss|sass|less|html)$/i.test(p) ||
+      /(^|\/)(components?|pages|views|screens|styles|ui)\//i.test(p),
+  },
+  {
+    key: "backend",
+    label: "Backend work",
+    test: (p) =>
+      /\.(py|go|rb|php|java|rs|cs|ex|exs|scala|kt|swift)$/i.test(p) ||
+      /(^|\/)(api|server|routes?|controllers?|models?|services?|handlers?|middleware|jobs?|workers?)\//i.test(
+        p
+      ),
+  },
+  {
+    key: "config",
+    label: "Project configuration",
+    test: (p) =>
+      /(package\.json|package-lock\.json|tsconfig[^/]*\.json|\.eslintrc[^/]*|\.prettierrc[^/]*|\.env[^/]*|\.ya?ml|\.toml|\.ini|\.cfg)$/i.test(
+        p
+      ),
+  },
+];
+
+function classifyPath(path) {
+  const p = toPosix(path);
+  for (const layer of LAYERS) if (layer.test(p)) return layer;
+  return { key: "code", label: "Code changes" };
+}
+
+// Shell verbs, grouped into activities a non-engineer can read. `npm` and `pip`
+// are the same line on a timesheet even though they aren't the same tool.
+const SHELL_ACTIVITY = {
+  "Version control": ["git"],
+  "Builds & dependencies": [
+    "npm", "pnpm", "yarn", "make", "pip", "bundle", "composer", "cargo", "go",
+    "mvn", "gradle", "dotnet",
+  ],
+  "Running tests": ["pytest", "vitest", "jest", "mocha", "playwright", "cypress"],
+  "Infrastructure & deployment": [
+    "docker", "docker-compose", "kubectl", "helm", "terraform", "ansible",
+    "aws", "gcloud", "az", "fly", "vercel",
+  ],
+  "Database & migrations": ["psql", "mysql", "sqlite3", "redis-cli"],
+  "Running the app": ["node", "deno", "bun", "python", "python3", "ruby", "rails", "php", "rustc"],
+  "API calls & debugging": ["curl", "ssh"],
+};
+
+const VERB_ACTIVITY = new Map();
+for (const [label, verbs] of Object.entries(SHELL_ACTIVITY)) {
+  for (const v of verbs) VERB_ACTIVITY.set(v, label);
+}
+
+// Which work item an event belongs to. File work groups by what kind of work it
+// is rather than by directory, so a timesheet line reads "Backend work" instead
+// of "repo/src/api". The files and commands themselves survive as evidence in
+// the detail column, so an engineer can still see exactly what was touched.
 function bucketOf(ev) {
   const name = ev.toolName;
   if (!name) return null; // usage-only event, inherits the current bucket
 
   if (FILE_TOOLS.has(name) && ev.target) {
-    return { key: `dir:${dirOf(ev.target)}`, label: shortDir(dirOf(ev.target)), file: ev.target };
+    const layer = classifyPath(ev.target);
+    return { key: `layer:${layer.key}`, label: layer.label, evidence: baseOf(ev.target) };
   }
   if (SHELL_TOOLS.has(name)) {
     const verb = shellVerb(ev.target);
-    return verb
-      ? { key: `shell:${verb}`, label: `${verb} commands` }
-      : { key: "shell", label: "shell commands" };
+    const label = verb ? VERB_ACTIVITY.get(verb) : null;
+    if (label) return { key: `act:${label}`, label, evidence: verb };
+    return { key: "shell", label: "Shell commands", evidence: verb || null };
   }
-  if (SEARCH_TOOLS.has(name)) return { key: "search", label: "searching the codebase" };
-  if (WEB_TOOLS.has(name)) return { key: "web", label: "web research" };
+  if (SEARCH_TOOLS.has(name)) return { key: "search", label: "Reading & investigating" };
+  if (WEB_TOOLS.has(name)) return { key: "web", label: "Research" };
   if (AGENT_TOOLS.has(name)) {
-    const what = ev.target ? ` (${ev.target.slice(0, 40)})` : "";
-    return { key: "agent", label: `delegated work${what}` };
+    return { key: "agent", label: "Delegated to sub-agents", evidence: ev.target || null };
   }
   return { key: `tool:${name}`, label: name };
 }
 
-function fmtDuration(ms) {
+export function fmtDuration(ms) {
+  // Under a minute, show seconds. Rounding a 40 second item to "0m" makes a
+  // real piece of work look like nothing happened.
+  if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
   const totalMinutes = Math.round(ms / 60_000);
   const h = Math.floor(totalMinutes / 60);
   const m = totalMinutes % 60;
@@ -137,6 +227,13 @@ function fmtDuration(ms) {
 
 function fmtHours(ms) {
   return (ms / 3_600_000).toFixed(2);
+}
+
+function fmtTokens(n) {
+  if (!n) return "";
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M tok";
+  if (n >= 1000) return Math.round(n / 1000) + "K tok";
+  return n + " tok";
 }
 
 function fmtClock(ts) {
@@ -157,6 +254,7 @@ export function buildTimesheet({
   untilDay,
   project,
   idleMinutes = DEFAULT_IDLE_MINUTES,
+  overlap = "split",
 } = {}) {
   const events = getRawEvents({ sinceDay, untilDay, project });
   const idleMs = Math.max(1, idleMinutes) * 60_000;
@@ -166,6 +264,17 @@ export function buildTimesheet({
   const tokenMap = new Map(
     getSummary({ sinceDay, untilDay }).map((r) => [`${r.day}::${r.project}`, r])
   );
+
+  // What was asked for, in your own words. Classification says what kind of
+  // work it was; this says what the work was actually about, and it's the one
+  // part that needs no inference at all.
+  //
+  // Keyed by session rather than by date: a session that runs past midnight is
+  // still about the same thing on the far side of it, and keying on the day it
+  // started would leave the next morning blank.
+  // Deliberately unfiltered by date: a session that started before the range
+  // still explains the work inside it. One row per session, so it stays cheap.
+  const titleMap = new Map(getSessionTitles({ project }).map((s) => [s.sessionId, s.title]));
 
   const groups = new Map();
   for (const ev of events) {
@@ -178,57 +287,105 @@ export function buildTimesheet({
     g.events.push(ev);
   }
 
-  const rows = [];
+  // Pass one: turn each project-day into intervals of worked time. Nothing is
+  // totalled yet, because a minute's worth depends on what the other projects
+  // were doing at the same moment.
   for (const g of groups.values()) {
     g.events.sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
 
-    const items = new Map();
-    const sessions = new Set();
-    let activeMs = 0;
-    let tasks = 0;
+    g.items = new Map();
+    g.intervals = [];
+    g.sessions = new Set();
+    g.tasks = 0;
     let current = null; // last bucket seen, inherited by usage-only events
 
-    const credit = (bucket, ms) => {
-      if (!bucket) return;
-      let item = items.get(bucket.key);
+    const itemFor = (bucket) => {
+      let item = g.items.get(bucket.key);
       if (!item) {
-        item = { key: bucket.key, label: bucket.label, ms: 0, calls: 0, files: new Map() };
-        items.set(bucket.key, item);
+        item = {
+          key: bucket.key,
+          label: bucket.label,
+          ms: 0,
+          tokens: 0,
+          calls: 0,
+          files: new Map(),
+        };
+        g.items.set(bucket.key, item);
       }
-      item.ms += ms;
+      return item;
     };
 
     for (let i = 0; i < g.events.length; i++) {
       const ev = g.events[i];
-      sessions.add(ev.sessionId);
+      g.sessions.add(ev.sessionId);
 
       const bucket = bucketOf(ev) || current;
       if (bucket) current = bucket;
 
+      // Tokens attach to the work item the same way time does, including the
+      // tokens of a message that fired no tools at all — those land on whatever
+      // was in flight, rather than vanishing from the breakdown.
+      if (ev.tokens && bucket) itemFor(bucket).tokens += ev.tokens;
+
       if (ev.toolName) {
-        tasks++;
+        g.tasks++;
         if (bucket) {
-          credit(bucket, 0); // make sure the item exists even with no time yet
-          const item = items.get(bucket.key);
+          const item = itemFor(bucket);
           item.calls++;
-          if (bucket.file) {
-            const name = baseOf(bucket.file);
-            item.files.set(name, (item.files.get(name) || 0) + 1);
+          if (bucket.evidence) {
+            item.files.set(bucket.evidence, (item.files.get(bucket.evidence) || 0) + 1);
           }
         }
       }
 
+      const start = new Date(ev.ts).getTime();
       const next = g.events[i + 1];
-      const gap = next
-        ? new Date(next.ts).getTime() - new Date(ev.ts).getTime()
-        : TAIL_MS;
+      const gap = next ? new Date(next.ts).getTime() - start : TAIL_MS;
       // A gap longer than the threshold is a break, not work. Dropped whole:
       // clamping it to the threshold would silently invent 15 minutes every
       // time you stepped away, which across a week is hours of fiction.
-      if (Number.isFinite(gap) && gap >= 0 && gap <= idleMs) {
-        activeMs += gap;
-        credit(bucket, gap);
-      }
+      if (!Number.isFinite(start) || !Number.isFinite(gap) || gap < 0 || gap > idleMs) continue;
+      if (bucket) itemFor(bucket); // exists even if it ends up with no time
+      g.intervals.push({
+        start,
+        end: start + gap,
+        group: g,
+        itemKey: bucket ? bucket.key : null,
+        credited: 0,
+      });
+    }
+  }
+
+  // Pass two: share out any wall-clock minute that two projects both claim.
+  //
+  // Within a project this can't happen, because every session and subagent for
+  // that project merges into one sorted timeline first. Across projects it very
+  // much can: work on two clients in the same hour and, counted naively, that
+  // hour bills twice. A six hour day reporting nine hours is worse than useless
+  // to the exact person this command is for, so overlapping time is divided
+  // evenly between the projects holding it.
+  const splitOverlap = overlap === "split";
+  const byDay = new Map();
+  for (const g of groups.values()) {
+    if (!byDay.has(g.day)) byDay.set(g.day, []);
+    byDay.get(g.day).push(...g.intervals);
+  }
+  for (const intervals of byDay.values()) {
+    if (!splitOverlap) {
+      for (const iv of intervals) iv.credited = iv.end - iv.start;
+      continue;
+    }
+    shareOverlappingTime(intervals);
+  }
+
+  const rows = [];
+  for (const g of groups.values()) {
+    let activeMs = 0;
+    let rawMs = 0;
+    for (const iv of g.intervals) {
+      activeMs += iv.credited;
+      rawMs += iv.end - iv.start;
+      if (iv.itemKey !== null) g.items.get(iv.itemKey).ms += iv.credited;
     }
 
     const tokens = tokenMap.get(`${g.day}::${g.project}`);
@@ -236,16 +393,21 @@ export function buildTimesheet({
       day: g.day,
       project: g.project,
       activeMs,
-      tasks,
-      sessions: sessions.size,
+      // How much of this row was shared with another project running at the
+      // same time. Zero on a normal single-project day.
+      overlapMs: rawMs - activeMs,
+      tasks: g.tasks,
+      sessions: g.sessions.size,
       firstTs: g.events[0]?.ts || null,
       lastTs: g.events[g.events.length - 1]?.ts || null,
       totalTokens: tokens ? tokens.totalTokens : 0,
-      items: [...items.values()]
+      titles: [...g.sessions].map((id) => titleMap.get(id)).filter(Boolean),
+      items: [...g.items.values()]
         .sort((a, b) => b.ms - a.ms || b.calls - a.calls)
         .map((it) => ({
           label: it.label,
           ms: it.ms,
+          tokens: Math.round(it.tokens),
           calls: it.calls,
           files: [...it.files.entries()]
             .sort((a, b) => b[1] - a[1])
@@ -260,10 +422,35 @@ export function buildTimesheet({
   );
 }
 
+// Sweep the day's intervals and give each slice of time to whoever holds it,
+// divided by how many projects hold it at once. Intervals belonging to the same
+// project never overlap each other, so the number of live intervals over a
+// slice is the number of projects competing for it.
+function shareOverlappingTime(intervals) {
+  const bounds = [...new Set(intervals.flatMap((iv) => [iv.start, iv.end]))].sort((a, b) => a - b);
+  const byStart = [...intervals].sort((a, b) => a.start - b.start);
+
+  let next = 0;
+  const live = new Set();
+
+  for (let i = 0; i < bounds.length - 1; i++) {
+    const from = bounds[i];
+    const to = bounds[i + 1];
+
+    while (next < byStart.length && byStart[next].start <= from) live.add(byStart[next++]);
+    for (const iv of live) if (iv.end <= from) live.delete(iv);
+    if (live.size === 0) continue;
+
+    const share = (to - from) / live.size;
+    for (const iv of live) iv.credited += share;
+  }
+}
+
 export function printTimesheet(opts = {}) {
   const rows = buildTimesheet(opts);
   const idleMinutes = opts.idleMinutes ?? DEFAULT_IDLE_MINUTES;
   const maxItems = opts.maxItems ?? 8;
+  const showPrompts = opts.prompts === true;
 
   if (rows.length === 0) {
     console.log(chalk.yellow("No Claude Code activity found for this range."));
@@ -275,6 +462,7 @@ export function printTimesheet(opts = {}) {
 
   let grandMs = 0;
   let lastDay = null;
+  const overlapDays = new Set();
 
   for (const row of rows) {
     if (row.day !== lastDay) {
@@ -286,13 +474,28 @@ export function printTimesheet(opts = {}) {
 
     const window =
       row.firstTs && row.lastTs ? chalk.dim(` ${fmtClock(row.firstTs)}-${fmtClock(row.lastTs)}`) : "";
+    if (row.overlapMs >= 60_000) overlapDays.add(row.day);
     console.log(
       "  " +
         chalk.cyan(row.project.padEnd(28)) +
         chalk.bold(fmtDuration(row.activeMs).padStart(8)) +
+        chalk.dim(fmtTokens(row.totalTokens).padStart(10)) +
         chalk.dim(`  ${row.tasks} tasks, ${row.sessions} runs`) +
         window
     );
+
+    // The prompts you typed are off by default: a timesheet is a summary of
+    // what was done, not a transcript of how it was asked for. --prompts brings
+    // them back for anyone who wants the raw ask alongside the summary.
+    if (showPrompts) {
+      for (const title of row.titles.slice(0, 4)) {
+        console.log("    " + chalk.dim("“") + title + chalk.dim("”"));
+      }
+      if (row.titles.length > 4) {
+        console.log("    " + chalk.dim(`+ ${row.titles.length - 4} more sessions`));
+      }
+      if (row.titles.length) console.log("");
+    }
 
     // Long days have a long tail of one-off work items. Showing every one of
     // them buries the lines that matter, so the tail is folded into a single
@@ -306,9 +509,10 @@ export function printTimesheet(opts = {}) {
       console.log(
         "    " +
           chalk.dim("- ") +
-          fmtDuration(item.ms).padStart(6) +
+          fmtDuration(item.ms).padStart(7) +
+          chalk.dim(fmtTokens(item.tokens).padStart(9)) +
           "  " +
-          item.label +
+          item.label.padEnd(28) +
           files
       );
     }
@@ -331,6 +535,15 @@ export function printTimesheet(opts = {}) {
         `Gaps over ${idleMinutes}m treated as breaks and excluded.`
     )
   );
+  if (overlapDays.size) {
+    console.log(
+      chalk.dim(
+        `${overlapDays.size} day(s) had projects running at the same time. Shared minutes were ` +
+          `split between them, so the per-project rows add up to the day rather than exceeding it. ` +
+          `Use --overlap keep to see each project's unshared time instead.`
+      )
+    );
+  }
   console.log(
     chalk.dim(
       "This is an estimate reconstructed from transcript timestamps, not a stopwatch. " +
@@ -348,32 +561,25 @@ export function timesheetCsv(opts = {}) {
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
 
-  const out = [
-    ["date", "project", "day_hours", "task", "task_hours", "tool_calls", "files"].join(","),
-  ];
+  // The prompt column only appears when explicitly asked for, so a file you
+  // hand to someone else carries no prose from your sessions by accident.
+  const withPrompts = opts.prompts === true;
+  const header = ["date", "project", "day_hours", "day_tokens"];
+  if (withPrompts) header.push("worked_on");
+  header.push("task", "task_hours", "task_tokens", "tool_calls", "detail");
+  const out = [header.join(",")];
+
+  const line = (row, item) => {
+    const cols = [row.day, row.project, fmtHours(row.activeMs), row.totalTokens];
+    if (withPrompts) cols.push(row.titles.join(" · "));
+    if (item) cols.push(item.label, fmtHours(item.ms), item.tokens, item.calls, item.files.join(" "));
+    else cols.push("", "", "", 0, "");
+    return cols.map(esc).join(",");
+  };
 
   for (const row of rows) {
-    if (row.items.length === 0) {
-      out.push(
-        [row.day, row.project, fmtHours(row.activeMs), "", "", 0, ""].map(esc).join(",")
-      );
-      continue;
-    }
-    for (const item of row.items) {
-      out.push(
-        [
-          row.day,
-          row.project,
-          fmtHours(row.activeMs),
-          item.label,
-          fmtHours(item.ms),
-          item.calls,
-          item.files.join(" "),
-        ]
-          .map(esc)
-          .join(",")
-      );
-    }
+    if (row.items.length === 0) out.push(line(row, null));
+    else for (const item of row.items) out.push(line(row, item));
   }
 
   return out.join("\n");

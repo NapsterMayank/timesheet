@@ -4,7 +4,7 @@ import { dbPath } from "./paths.js";
 // Bump when the schema changes. Everything here is derived from transcripts on
 // disk, so a mismatch just drops the tables and rescans from scratch rather
 // than migrating: the source of truth is never the database.
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 let _db = null;
 
@@ -21,6 +21,7 @@ export function getDb() {
     _db.exec(`
       DROP TABLE IF EXISTS usage_events;
       DROP TABLE IF EXISTS tool_events;
+      DROP TABLE IF EXISTS sessions;
       DROP TABLE IF EXISTS scanned_files;
     `);
     _db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?)").run(
@@ -69,6 +70,20 @@ export function getDb() {
       is_subagent INTEGER NOT NULL DEFAULT 0
     );
 
+    -- What you actually asked for, taken from the first real message you typed
+    -- in a session. This is the only part of a transcript's prose that gets
+    -- stored, it never leaves this machine, and AITIMESHEET_NO_PROMPTS=1 turns
+    -- it off entirely.
+    CREATE TABLE IF NOT EXISTS sessions (
+      session_id TEXT PRIMARY KEY,
+      project TEXT NOT NULL,
+      day TEXT NOT NULL,
+      ts TEXT,
+      title TEXT,
+      is_subagent INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sessions_day ON sessions(day);
     CREATE INDEX IF NOT EXISTS idx_usage_day ON usage_events(day);
     CREATE INDEX IF NOT EXISTS idx_usage_project ON usage_events(project);
     CREATE INDEX IF NOT EXISTS idx_usage_session ON usage_events(session_id);
@@ -116,6 +131,46 @@ export function insertToolEvent(ev) {
                @target, @subagent_type, @is_subagent)`
     )
     .run(ev);
+}
+
+// First real message wins: INSERT OR IGNORE means later turns in the same
+// session never overwrite what the session was originally about.
+export function insertSession(ev) {
+  getDb()
+    .prepare(
+      `INSERT OR IGNORE INTO sessions (session_id, project, day, ts, title, is_subagent)
+       VALUES (@session_id, @project, @day, @ts, @title, @is_subagent)`
+    )
+    .run(ev);
+}
+
+// Session titles for a range, so a day can say what was asked for rather than
+// only which directories were touched.
+export function getSessionTitles({ sinceDay, untilDay, project } = {}) {
+  const db = getDb();
+  const { where, params } = whereDays({ sinceDay, untilDay });
+  let filter = where;
+  if (project) {
+    filter += " AND project = @project";
+    params.project = project;
+  }
+
+  return db
+    .prepare(
+      `SELECT session_id, project, day, ts, title, is_subagent
+       FROM sessions
+       WHERE ${filter} AND title IS NOT NULL AND title <> ''
+       ORDER BY ts`
+    )
+    .all(params)
+    .map((r) => ({
+      sessionId: r.session_id,
+      project: r.project,
+      day: r.day,
+      ts: r.ts,
+      title: r.title,
+      isSubagent: !!r.is_subagent,
+    }));
 }
 
 // ---------------------------------------------------------------------------
@@ -326,22 +381,53 @@ export function getAgentRuns({ sinceDay, untilDay, project, limit = 10 } = {}) {
 // stretch from looking like idle time.
 export function getRawEvents({ sinceDay, untilDay, project } = {}) {
   const db = getDb();
-  const { where, params } = whereDays({ sinceDay, untilDay });
-  let filter = where;
+  // Two aliased copies of the same conditions. Prefixing the column names by
+  // hand rather than rewriting the finished clause, because a find-and-replace
+  // over the SQL also mangles the @project placeholder into @t.project.
+  const t = whereDays({ sinceDay, untilDay }, "t.");
+  const u = whereDays({ sinceDay, untilDay }, "u.");
+  const params = { ...t.params };
+  let toolFilter = t.where;
+  let usageFilter = u.where;
   if (project) {
-    filter += " AND project = @project";
+    toolFilter += " AND t.project = @project";
+    usageFilter += " AND u.project = @project";
     params.project = project;
   }
 
+  // Tokens ride along with the events so a work item can report what it cost as
+  // well as how long it took.
+  //
+  // A message's tokens are split evenly across the tool calls it fired, exactly
+  // as getToolBreakdown does. That's an allocation, not a measurement: the API
+  // bills per message, not per tool call. Messages that fired no tools carry
+  // their tokens on the usage row instead, and the CASE below is what stops
+  // those two paths from counting the same tokens twice.
   return db
     .prepare(
-      `SELECT day, project, session_id, ts, tool_name, target, is_subagent
-       FROM tool_events
-       WHERE ${filter} AND ts IS NOT NULL
+      `WITH shares AS (
+         SELECT message_id, COUNT(*) AS n FROM tool_events GROUP BY message_id
+       )
+       SELECT t.day, t.project, t.session_id, t.ts, t.tool_name, t.target, t.is_subagent,
+              COALESCE(
+                (u.input_tokens + u.cache_creation_tokens + u.output_tokens) * 1.0 / s.n, 0
+              ) AS tokens
+       FROM tool_events t
+       LEFT JOIN usage_events u ON u.message_id = t.message_id
+       LEFT JOIN shares s ON s.message_id = t.message_id
+       WHERE ${toolFilter} AND t.ts IS NOT NULL
+
        UNION ALL
-       SELECT day, project, session_id, ts, NULL AS tool_name, NULL AS target, is_subagent
-       FROM usage_events
-       WHERE ${filter} AND ts IS NOT NULL
+
+       SELECT u.day, u.project, u.session_id, u.ts, NULL AS tool_name, NULL AS target,
+              u.is_subagent,
+              CASE WHEN s.n IS NULL
+                   THEN (u.input_tokens + u.cache_creation_tokens + u.output_tokens)
+                   ELSE 0 END AS tokens
+       FROM usage_events u
+       LEFT JOIN shares s ON s.message_id = u.message_id
+       WHERE ${usageFilter} AND u.ts IS NOT NULL
+
        ORDER BY ts`
     )
     .all(params)
@@ -352,6 +438,7 @@ export function getRawEvents({ sinceDay, untilDay, project } = {}) {
       ts: e.ts,
       toolName: e.tool_name,
       target: e.target,
+      tokens: e.tokens || 0,
       isSubagent: !!e.is_subagent,
     }));
 }
