@@ -1,7 +1,19 @@
 import { readdirSync, statSync, openSync, readSync, closeSync } from "node:fs";
 import { join, basename, relative, sep } from "node:path";
 import { claudeProjectsDir } from "./paths.js";
-import { getFileOffset, setFileOffset, insertUsageEvent, insertToolEvent } from "./db.js";
+import {
+  getFileOffset,
+  setFileOffset,
+  insertUsageEvent,
+  insertToolEvent,
+  insertSession,
+} from "./db.js";
+
+// Prompt capture is the one place this tool would store prose rather than
+// counts, so it's off unless you ask for it. A timesheet is a summary of what
+// was done, not a transcript of how it was asked for, and by default the
+// database holds nothing but paths and numbers.
+const CAPTURE_PROMPTS = process.env.AITIMESHEET_PROMPTS === "1";
 
 function walkJsonlFiles(dir) {
   const out = [];
@@ -76,12 +88,62 @@ function describeTarget(name, input) {
   return null;
 }
 
+// A `user` line is not always something a person typed. Tool results come back
+// on user lines, and so do hook output, slash-command expansions and injected
+// reminders. Only genuine prose is a useful session title.
+const NOISE_PREFIX =
+  /^(caveat:|<command|<local-command|<user-prompt|<system-reminder|<bash-input|<bash-stdout)/i;
+
+function userPrompt(entry) {
+  if (entry.isMeta) return null;
+
+  const content = entry.message?.content;
+  let text = null;
+
+  if (typeof content === "string") {
+    text = content;
+  } else if (Array.isArray(content)) {
+    // tool_result blocks live here too; only text blocks are the person talking.
+    const parts = content
+      .filter((b) => b?.type === "text" && typeof b.text === "string")
+      .map((b) => b.text);
+    if (parts.length) text = parts.join(" ");
+  }
+  if (!text) return null;
+
+  const cleaned = text
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!cleaned || NOISE_PREFIX.test(cleaned)) return null;
+  // Long enough to mean something, short enough to sit on one line of a report.
+  if (cleaned.length < 3) return null;
+  return cleaned.slice(0, 120);
+}
+
 function processLine(raw, ctx) {
   let entry;
   try {
     entry = JSON.parse(raw);
   } catch {
     return; // partial or malformed line, skip it
+  }
+
+  if (entry.type === "user" && entry.message) {
+    if (!CAPTURE_PROMPTS) return;
+    const title = userPrompt(entry);
+    if (!title) return;
+    const ts = entry.timestamp || null;
+    insertSession({
+      session_id: ctx.sessionId,
+      project: ctx.project,
+      day: dayOf(ts),
+      ts,
+      title,
+      is_subagent: ctx.isSubagent ? 1 : 0,
+    });
+    return;
   }
 
   if (entry.type !== "assistant" || !entry.message) return;

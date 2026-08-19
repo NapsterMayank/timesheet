@@ -124,16 +124,15 @@ kind of claim:
 ```console
 $ aitimesheet timesheet --days 2
 2026-08-18
-  acme-checkout-api             3h 00m  200 tasks, 2 runs 14:11-02:15
-    - 1h 18m  shell commands
-    -    37m  docker commands
-    -    29m  python commands
-    -     8m  api/routes  checkout.py, webhooks.py
-    -     6m  vitest commands
-    -     3m  6 smaller items
-  marketing-site                   23m  28 tasks, 1 runs 01:02-02:15
-    -    14m  node commands
-    -     8m  site/src  layout.tsx, pricing.tsx
+  acme-checkout-api             3h 00m  1.2M tok  200 tasks, 2 runs 14:11-02:15
+    -  1h 02m 412K tok  Backend work                  checkout.py, webhooks.py
+    -     48m 233K tok  Frontend work                 Cart.tsx, useCheckout.ts
+    -     31m  89K tok  Testing                       checkout.test.ts
+    -     22m  61K tok  Infrastructure & deployment   docker
+    -     17m  44K tok  Version control               git
+  marketing-site                   23m  190K tok  28 tasks, 1 runs 01:02-02:15
+    -     14m 121K tok  Frontend work                 layout.tsx, pricing.tsx
+    -      9m  69K tok  Builds & dependencies         npm
 
 3h 23m of agent-active time across 2 project-day rows.
 ```
@@ -144,6 +143,7 @@ $ aitimesheet timesheet --days 2
 | `--days N` | The last N days instead of one |
 | `--project NAME` | Only that project |
 | `--idle M` | Gaps longer than M minutes count as breaks. Default 15 |
+| `--overlap split\|keep` | How to handle two projects running at once. Default `split` |
 | `--csv` | CSV on stdout: one row per work item, day totals repeated |
 
 **How the time is worked out.** First-to-last wall clock would bill your lunch,
@@ -153,11 +153,52 @@ invent 15 minutes every time you stepped away, which across a week is hours of
 fiction. Time is attributed to whatever was in flight when the gap started, so a
 four minute pause after opening a file lands on that file.
 
-**How tasks are grouped.** File reads and edits group by directory, because the
-useful line is "worked on the scanner", not "opened db.js" twelve times. Shell
-work splits by the program being run (`git`, `docker`, `pytest`); utility
-commands like `cat` and `ls` stay pooled in one line rather than becoming twenty
-meaningless rows.
+**Two projects at once.** Sessions and subagents inside one project merge into a
+single timeline first, so parallel agents can never inflate that project's hours.
+Across projects they would: work two clients in the same hour and, counted
+naively, that hour bills twice. Shared minutes are divided evenly between the
+projects holding them, so per-project rows add up to the day instead of
+exceeding it. `--overlap keep` shows each project's time in full instead, which
+is correct per project and nonsense as a day total.
+
+**How work is named.** Two things, from two different places:
+
+*What was asked for* comes from the first message you typed in each session,
+verbatim. No inference at all — it's the line a manager actually reads.
+
+*What kind of work it was* comes from the files touched and the commands run.
+Paths are strong evidence: `.tsx` under `components/` is frontend, `.py` under
+`api/` is backend, anything matching `*.test.*` is testing, `.github/` and
+`Dockerfile` are deployment. Shell work groups the same way, so `npm` and `pip`
+both read as "Builds & dependencies" rather than as two different tools.
+
+What it deliberately does **not** do is guess at intent. Nothing in a transcript
+distinguishes writing a new endpoint from fixing a broken one — both are edits
+to the same file. So work is labelled by layer and activity, never invented as
+"bug fix" or "new feature" on the strength of a hunch. Your own prompt is what
+supplies that, when it supplies it at all.
+
+| Label | Comes from |
+|---|---|
+| Frontend work | `.tsx`, `.jsx`, `.vue`, `.css`, `components/`, `pages/` |
+| Backend work | `.py`, `.go`, `.rb`, `api/`, `server/`, `routes/`, `models/` |
+| Testing | `*.test.*`, `__tests__/`, `spec/`, and test runners |
+| Database & migrations | `.sql`, `migrations/`, `prisma/`, `psql` |
+| Infrastructure & deployment | `Dockerfile`, `.tf`, `.github/`, `docker`, `kubectl` |
+| Documentation | `.md`, `docs/` |
+| Version control | `git` |
+| Builds & dependencies | `npm`, `pip`, `cargo`, `make`, `gradle` |
+
+**Cost per task.** Each work item carries its own token count, not just the
+day's total. A message's tokens are split evenly across the tool calls it fired,
+which is an allocation rather than a measurement — the API bills per message,
+not per tool call. Messages that fired no tools put their tokens on whatever
+work was in flight, so nothing silently disappears from the breakdown.
+
+**Prompts are off by default.** A timesheet is a summary of what was done, not a
+transcript of how it was asked for, so the database holds nothing but paths and
+numbers unless you opt in. Set `AITIMESHEET_PROMPTS=1` when scanning to capture
+the first message of each session, then pass `--prompts` to display them.
 
 **What it is not.** This measures *agent-active* time, not your time. The gaps
 that survive include you reading a diff, which is usually what you want on a

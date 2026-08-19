@@ -49,6 +49,8 @@ async function main() {
         untilDay: day || undefined,
         project: getFlag(rest, "project", undefined),
         idleMinutes: Number(getFlag(rest, "idle", "15")),
+        overlap: getFlag(rest, "overlap", "split"),
+        prompts: hasFlag(rest, "prompts"),
       };
       if (hasFlag(rest, "csv")) console.log(timesheetCsv(opts));
       else printTimesheet(opts);
@@ -83,6 +85,10 @@ timesheet options:
   --days N           the last N days instead of one
   --project NAME     only this project
   --idle M           gaps longer than M minutes count as breaks (default 15)
+  --overlap split|keep  time worked on two projects at once is split evenly
+                     between them (default), or counted in full for each
+  --prompts          also show the prompts that started each session
+                     (needs AITIMESHEET_PROMPTS=1 at scan time; off by default)
   --csv              emit CSV instead of a table
 
 Everything is read from ~/.claude/projects and stored in ~/.aitimesheet/db.sqlite
