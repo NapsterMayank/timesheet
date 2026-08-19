@@ -271,12 +271,18 @@ the above yourself, it won't take long.
 
 ## Roadmap
 
+- [x] Time and tasks per project per day (`aitimesheet timesheet`)
+- [x] Work classified as backend, frontend, testing, infrastructure
+- [x] Tokens per task, not just per day
+- [x] CSV export (`aitimesheet timesheet --csv`)
+- [ ] Git commit correlation, so a line can read
+      `Backend work — fix: null deref in checkout` without guessing at intent
+- [ ] Project name aliases, so `D--work-acme-api` reads as `Acme API`
+- [ ] Dollar costs per model, and `--rate` for billable hours
+- [ ] `--group week|month` and export formats for Harvest, Toggl and Jira
+- [ ] Weekly summary you can drop into a standup
 - [ ] An importable logger for agents built on the Claude Agent SDK / API, which
       don't write to `~/.claude/projects`, so custom agents land in the same database
-- [ ] Per-model and per-cost breakdowns
-- [x] CSV export (`aitimesheet timesheet --csv`)
-- [ ] Weekly summary you can drop into a standup
-- [ ] Project name aliases, so `D--work-acme-api` reads as `Acme API`
 
 ---
 
