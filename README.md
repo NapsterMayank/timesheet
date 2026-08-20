@@ -144,6 +144,7 @@ $ aitimesheet timesheet --days 2
 | `--project NAME` | Only that project |
 | `--idle M` | Gaps longer than M minutes count as breaks. Default 15 |
 | `--overlap split\|keep` | How to handle two projects running at once. Default `split` |
+| `--no-git` | Don't read commits for the range |
 | `--csv` | CSV on stdout: one row per work item, day totals repeated |
 
 **How the time is worked out.** First-to-last wall clock would bill your lunch,
@@ -188,6 +189,26 @@ supplies that, when it supplies it at all.
 | Documentation | `.md`, `docs/` |
 | Version control | `git` |
 | Builds & dependencies | `npm`, `pip`, `cargo`, `make`, `gradle` |
+
+**What actually shipped.** If the project is a git repository, commits made in
+the range are read with a local `git log` and hung off the work items whose
+files they touched:
+
+```
+    -  1h 02m 412K tok  Backend work                  checkout.py, webhooks.py
+      ↳ fix: null deref in checkout
+      ↳ feat: retry failed webhook deliveries
+```
+
+A commit message is a person describing their own work at the time they did it,
+so it outranks any label this tool derives and is shown alongside one. By
+default only your own commits are read, matched on the repository's
+`user.email` — on a shared branch, a colleague's commits are their timesheet,
+not yours. `--no-git` skips this entirely.
+
+The repository path comes from the `cwd` recorded in the transcript, not from
+the project folder name: that name has had its separators flattened to dashes,
+so `D--personal-my-app` can't be turned back into a path unambiguously.
 
 **Cost per task.** Each work item carries its own token count, not just the
 day's total. A message's tokens are split evenly across the tool calls it fired,
@@ -257,7 +278,8 @@ teams, and shouldn't be trusted by default.
 
 So, concretely, aitimesheet:
 
-- reads only `~/.claude/projects/**/*.jsonl`
+- reads only `~/.claude/projects/**/*.jsonl`, plus a local read-only `git log`
+  in your own project directories (skip it with `--no-git`)
 - writes only `~/.aitimesheet/db.sqlite`
 - makes **no network requests**, of any kind, ever
 - binds the web dashboard to `127.0.0.1` only, unreachable from your network
@@ -275,7 +297,7 @@ the above yourself, it won't take long.
 - [x] Work classified as backend, frontend, testing, infrastructure
 - [x] Tokens per task, not just per day
 - [x] CSV export (`aitimesheet timesheet --csv`)
-- [ ] Git commit correlation, so a line can read
+- [x] Git commit correlation, so a line reads
       `Backend work — fix: null deref in checkout` without guessing at intent
 - [ ] Project name aliases, so `D--work-acme-api` reads as `Acme API`
 - [ ] Dollar costs per model, and `--rate` for billable hours

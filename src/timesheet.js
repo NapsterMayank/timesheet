@@ -1,5 +1,6 @@
 import chalk from "chalk";
-import { getRawEvents, getSummary, getSessionTitles } from "./db.js";
+import { getRawEvents, getSummary, getSessionTitles, getProjectPaths } from "./db.js";
+import { commitsInRange } from "./git.js";
 
 // ---------------------------------------------------------------------------
 // The timesheet view: what got worked on, and roughly for how long.
@@ -255,6 +256,7 @@ export function buildTimesheet({
   project,
   idleMinutes = DEFAULT_IDLE_MINUTES,
   overlap = "split",
+  git = true,
 } = {}) {
   const events = getRawEvents({ sinceDay, untilDay, project });
   const idleMs = Math.max(1, idleMinutes) * 60_000;
@@ -309,6 +311,7 @@ export function buildTimesheet({
           tokens: 0,
           calls: 0,
           files: new Map(),
+          commits: [],
         };
         g.items.set(bucket.key, item);
       }
@@ -378,6 +381,27 @@ export function buildTimesheet({
     shareOverlappingTime(intervals);
   }
 
+  // Commits that landed in the range, per project, keyed by day. Asked for once
+  // per project rather than once per day, because spawning git is the expensive
+  // part and one log covers the whole window.
+  const commitsByDay = new Map();
+  if (git !== false) {
+    const paths = getProjectPaths();
+    const days = [...groups.values()].map((g) => g.day).sort();
+    for (const [proj, repoPath] of paths) {
+      if (project && proj !== project) continue;
+      if (![...groups.values()].some((g) => g.project === proj)) continue;
+      for (const commit of commitsInRange(repoPath, {
+        sinceDay: days[0],
+        untilDay: days[days.length - 1],
+      })) {
+        const key = `${commit.day}::${proj}`;
+        if (!commitsByDay.has(key)) commitsByDay.set(key, []);
+        commitsByDay.get(key).push(commit);
+      }
+    }
+  }
+
   const rows = [];
   for (const g of groups.values()) {
     let activeMs = 0;
@@ -386,6 +410,18 @@ export function buildTimesheet({
       activeMs += iv.credited;
       rawMs += iv.end - iv.start;
       if (iv.itemKey !== null) g.items.get(iv.itemKey).ms += iv.credited;
+    }
+
+    // Hang each commit off the work items its files belong to, so "Backend
+    // work" can carry "fix: null deref in checkout". A commit touching both
+    // API and UI files legitimately shows up on both lines: it was both.
+    const dayCommits = commitsByDay.get(`${g.day}::${g.project}`) || [];
+    for (const commit of dayCommits) {
+      const layers = new Set(commit.files.map((f) => `layer:${classifyPath(f).key}`));
+      for (const key of layers) {
+        const item = g.items.get(key);
+        if (item) item.commits.push(commit);
+      }
     }
 
     const tokens = tokenMap.get(`${g.day}::${g.project}`);
@@ -402,6 +438,7 @@ export function buildTimesheet({
       lastTs: g.events[g.events.length - 1]?.ts || null,
       totalTokens: tokens ? tokens.totalTokens : 0,
       titles: [...g.sessions].map((id) => titleMap.get(id)).filter(Boolean),
+      commits: dayCommits,
       items: [...g.items.values()]
         .sort((a, b) => b.ms - a.ms || b.calls - a.calls)
         .map((it) => ({
@@ -409,6 +446,7 @@ export function buildTimesheet({
           ms: it.ms,
           tokens: Math.round(it.tokens),
           calls: it.calls,
+          commits: it.commits.map((c) => c.subject),
           files: [...it.files.entries()]
             .sort((a, b) => b[1] - a[1])
             .slice(0, 4)
@@ -505,7 +543,6 @@ export function printTimesheet(opts = {}) {
     const tail = shown.slice(maxItems);
 
     for (const item of head) {
-      const files = item.files.length ? chalk.dim(`  ${item.files.join(", ")}`) : "";
       console.log(
         "    " +
           chalk.dim("- ") +
@@ -513,8 +550,13 @@ export function printTimesheet(opts = {}) {
           chalk.dim(fmtTokens(item.tokens).padStart(9)) +
           "  " +
           item.label.padEnd(28) +
-          files
+          (item.files.length ? chalk.dim(item.files.join(", ")) : "")
       );
+      // A commit message is a person describing the work, so it outranks any
+      // label this tool could derive. It goes on its own line underneath.
+      for (const subject of item.commits.slice(0, 3)) {
+        console.log("      " + chalk.dim("↳ ") + chalk.green(subject));
+      }
     }
     if (tail.length) {
       const tailMs = tail.reduce((sum, it) => sum + it.ms, 0);
@@ -566,14 +608,24 @@ export function timesheetCsv(opts = {}) {
   const withPrompts = opts.prompts === true;
   const header = ["date", "project", "day_hours", "day_tokens"];
   if (withPrompts) header.push("worked_on");
-  header.push("task", "task_hours", "task_tokens", "tool_calls", "detail");
+  header.push("task", "task_hours", "task_tokens", "tool_calls", "detail", "commits");
   const out = [header.join(",")];
 
   const line = (row, item) => {
     const cols = [row.day, row.project, fmtHours(row.activeMs), row.totalTokens];
     if (withPrompts) cols.push(row.titles.join(" · "));
-    if (item) cols.push(item.label, fmtHours(item.ms), item.tokens, item.calls, item.files.join(" "));
-    else cols.push("", "", "", 0, "");
+    if (item) {
+      cols.push(
+        item.label,
+        fmtHours(item.ms),
+        item.tokens,
+        item.calls,
+        item.files.join(" "),
+        item.commits.join(" · ")
+      );
+    } else {
+      cols.push("", "", "", 0, "", "");
+    }
     return cols.map(esc).join(",");
   };
 

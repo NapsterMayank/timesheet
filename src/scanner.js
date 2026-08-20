@@ -130,6 +130,22 @@ function processLine(raw, ctx) {
     return; // partial or malformed line, skip it
   }
 
+  // Where this session was working. Recorded regardless of prompt capture,
+  // because it's a path rather than prose, and it's what lets git be asked
+  // what actually shipped that day.
+  if (entry.cwd && !ctx.seenCwd) {
+    ctx.seenCwd = true;
+    insertSession({
+      session_id: ctx.sessionId,
+      project: ctx.project,
+      day: dayOf(entry.timestamp),
+      ts: entry.timestamp || null,
+      cwd: entry.cwd,
+      branch: entry.gitBranch || null,
+      is_subagent: ctx.isSubagent ? 1 : 0,
+    });
+  }
+
   if (entry.type === "user" && entry.message) {
     if (!CAPTURE_PROMPTS) return;
     const title = userPrompt(entry);

@@ -335,7 +335,11 @@ function projectDetailPanel(project, sheet, width) {
           padStart(item.tokens ? c.cyan(fmtCompact(item.tokens)) : c.dim("–"), tokensW) +
           padStart(c.dim(fmtNum(item.calls)), callsW) +
           "  " +
-          c.dim(truncate(item.files.join(", "), filesW))
+          // A commit message beats a file list: it says what the work was, not
+          // just where it happened.
+          (item.commits.length
+            ? c.green(truncate(item.commits[0], filesW))
+            : c.dim(truncate(item.files.join(", "), filesW)))
       );
     });
 

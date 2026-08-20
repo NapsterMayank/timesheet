@@ -51,6 +51,7 @@ async function main() {
         idleMinutes: Number(getFlag(rest, "idle", "15")),
         overlap: getFlag(rest, "overlap", "split"),
         prompts: hasFlag(rest, "prompts"),
+        git: !hasFlag(rest, "no-git"),
       };
       if (hasFlag(rest, "csv")) console.log(timesheetCsv(opts));
       else printTimesheet(opts);
@@ -87,6 +88,7 @@ timesheet options:
   --idle M           gaps longer than M minutes count as breaks (default 15)
   --overlap split|keep  time worked on two projects at once is split evenly
                      between them (default), or counted in full for each
+  --no-git           skip reading git commits for the range
   --prompts          also show the prompts that started each session
                      (needs AITIMESHEET_PROMPTS=1 at scan time; off by default)
   --csv              emit CSV instead of a table

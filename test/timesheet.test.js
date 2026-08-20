@@ -107,7 +107,7 @@ test("csv escapes and carries every item", () => {
   const lines = csv.trim().split("\n");
   assert.equal(
     lines[0],
-    "date,project,day_hours,day_tokens,task,task_hours,task_tokens,tool_calls,detail"
+    "date,project,day_hours,day_tokens,task,task_hours,task_tokens,tool_calls,detail,commits"
   );
   assert.equal(lines.length - 1, row.items.length);
   for (const line of lines.slice(1)) assert.ok(line.startsWith(`${DAY},demo,`));

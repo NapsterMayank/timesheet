@@ -4,7 +4,7 @@ import { dbPath } from "./paths.js";
 // Bump when the schema changes. Everything here is derived from transcripts on
 // disk, so a mismatch just drops the tables and rescans from scratch rather
 // than migrating: the source of truth is never the database.
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 let _db = null;
 
@@ -74,12 +74,18 @@ export function getDb() {
     -- in a session. This is the only part of a transcript's prose that gets
     -- stored, it never leaves this machine, and AITIMESHEET_NO_PROMPTS=1 turns
     -- it off entirely.
+    -- cwd is the real working directory, taken from the transcript rather than
+    -- decoded from the project folder name. That name has had its separators
+    -- flattened to dashes, so "D--personal-my-app" cannot be turned back into a
+    -- path unambiguously. The transcript just tells us.
     CREATE TABLE IF NOT EXISTS sessions (
       session_id TEXT PRIMARY KEY,
       project TEXT NOT NULL,
       day TEXT NOT NULL,
       ts TEXT,
       title TEXT,
+      cwd TEXT,
+      branch TEXT,
       is_subagent INTEGER NOT NULL DEFAULT 0
     );
 
@@ -133,15 +139,37 @@ export function insertToolEvent(ev) {
     .run(ev);
 }
 
-// First real message wins: INSERT OR IGNORE means later turns in the same
-// session never overwrite what the session was originally about.
+// Upsert rather than plain ignore, because the two things a session row holds
+// arrive on different lines: cwd shows up on the first line that has it, the
+// title only on the first thing you typed. COALESCE keeps whichever came first
+// and lets the other fill in later.
 export function insertSession(ev) {
   getDb()
     .prepare(
-      `INSERT OR IGNORE INTO sessions (session_id, project, day, ts, title, is_subagent)
-       VALUES (@session_id, @project, @day, @ts, @title, @is_subagent)`
+      `INSERT INTO sessions (session_id, project, day, ts, title, cwd, branch, is_subagent)
+       VALUES (@session_id, @project, @day, @ts, @title, @cwd, @branch, @is_subagent)
+       ON CONFLICT(session_id) DO UPDATE SET
+         title  = COALESCE(title, excluded.title),
+         cwd    = COALESCE(cwd, excluded.cwd),
+         branch = COALESCE(branch, excluded.branch)`
     )
-    .run(ev);
+    .run({ title: null, cwd: null, branch: null, ...ev });
+}
+
+// Where each project actually lives on disk, so git can be asked about it.
+// Most recent session wins if a project was ever opened from two places.
+export function getProjectPaths() {
+  return new Map(
+    getDb()
+      .prepare(
+        `SELECT project, cwd FROM sessions
+         WHERE cwd IS NOT NULL
+         GROUP BY project
+         HAVING ts = MAX(ts)`
+      )
+      .all()
+      .map((r) => [r.project, r.cwd])
+  );
 }
 
 // Session titles for a range, so a day can say what was asked for rather than
