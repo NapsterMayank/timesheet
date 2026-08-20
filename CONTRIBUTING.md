@@ -87,7 +87,10 @@ cd /tmp/pack-test && npm init -y && npm install ./aitimesheet-*.tgz
 ./node_modules/.bin/aitimesheet --help
 ./node_modules/.bin/aitimesheet timesheet --days 1
 
-# 4. Version, tag, publish
+# 4. Write the release notes first, so the version bump has something to describe
+#    (CHANGELOG.md)
+
+# 5. Version, tag, publish
 cd -                            # back to the repo
 npm version patch               # or minor / major; this commits and tags
 git push origin main --follow-tags

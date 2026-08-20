@@ -98,26 +98,46 @@ export function demoData({ days = 7 } = {}) {
   // screenshots show a believable working day rather than a rounded fiction.
   const WORK_ITEMS = {
     "acme-checkout-api": [
-      { label: "api/checkout", weight: 0.34, files: ["session.py", "webhooks.py", "refunds.py"] },
-      { label: "pytest commands", weight: 0.24, files: [] },
-      { label: "api/models", weight: 0.18, files: ["order.py", "payment.py"] },
-      { label: "git commands", weight: 0.13, files: [] },
-      { label: "shell commands", weight: 0.11, files: [] },
+      {
+        label: "Backend work",
+        weight: 0.34,
+        files: ["session.py", "webhooks.py", "refunds.py"],
+        commits: ["fix: null deref in checkout session", "feat: retry failed webhook deliveries"],
+      },
+      { label: "Testing", weight: 0.24, files: ["test_checkout.py"], commits: [] },
+      {
+        label: "Database & migrations",
+        weight: 0.18,
+        files: ["0007_add_refunds.sql"],
+        commits: ["feat: add refunds table"],
+      },
+      { label: "Version control", weight: 0.13, files: ["git"], commits: [] },
+      { label: "Builds & dependencies", weight: 0.11, files: ["pip"], commits: [] },
     ],
     "marketing-site": [
-      { label: "site/pages", weight: 0.42, files: ["pricing.tsx", "index.tsx"] },
-      { label: "npm commands", weight: 0.31, files: [] },
-      { label: "site/components", weight: 0.27, files: ["Hero.tsx", "Nav.tsx"] },
+      {
+        label: "Frontend work",
+        weight: 0.42,
+        files: ["pricing.tsx", "index.tsx"],
+        commits: ["feat: new pricing table"],
+      },
+      { label: "Builds & dependencies", weight: 0.31, files: ["npm"], commits: [] },
+      { label: "Documentation", weight: 0.27, files: ["README.md"], commits: [] },
     ],
     "data-pipeline": [
-      { label: "pipeline/jobs", weight: 0.48, files: ["ingest.py", "transform.py"] },
-      { label: "docker commands", weight: 0.29, files: [] },
-      { label: "searching the codebase", weight: 0.23, files: [] },
+      {
+        label: "Backend work",
+        weight: 0.48,
+        files: ["ingest.py", "transform.py"],
+        commits: ["perf: batch the ingest writes"],
+      },
+      { label: "Infrastructure & deployment", weight: 0.29, files: ["docker"], commits: [] },
+      { label: "Reading & investigating", weight: 0.23, files: [], commits: [] },
     ],
   };
   const DEFAULT_ITEMS = [
-    { label: "shell commands", weight: 0.55, files: [] },
-    { label: "searching the codebase", weight: 0.45, files: [] },
+    { label: "Shell commands", weight: 0.55, files: [], commits: [] },
+    { label: "Reading & investigating", weight: 0.45, files: [], commits: [] },
   ];
 
   const sheet = rows.map((r) => {
@@ -125,8 +145,10 @@ export function demoData({ days = 7 } = {}) {
     const items = (WORK_ITEMS[r.project] || DEFAULT_ITEMS).map((it) => ({
       label: it.label,
       ms: Math.round(activeMs * it.weight),
+      tokens: Math.round(r.totalTokens * it.weight),
       calls: Math.max(1, Math.round(r.tasks * it.weight)),
       files: it.files,
+      commits: it.commits || [],
     }));
     return {
       day: r.day,

@@ -337,7 +337,7 @@ function projectDetailPanel(project, sheet, width) {
           "  " +
           // A commit message beats a file list: it says what the work was, not
           // just where it happened.
-          (item.commits.length
+          (item.commits?.length
             ? c.green(truncate(item.commits[0], filesW))
             : c.dim(truncate(item.files.join(", "), filesW)))
       );

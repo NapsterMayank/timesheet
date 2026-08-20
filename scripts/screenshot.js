@@ -118,13 +118,26 @@ function toHtml(frame, { title }) {
 const shots = [
   { name: "tui-7d", range: "7", days: 7, width: 104, title: "aitimesheet tui - last 7 days" },
   { name: "tui-today", range: "1", days: 1, width: 98, title: "aitimesheet tui - today" },
+  {
+    name: "tui-timesheet",
+    range: "7",
+    days: 7,
+    width: 108,
+    view: "detail",
+    title: "aitimesheet tui - one project's timesheet",
+  },
 ];
 
 mkdirSync(join(ROOT, "docs"), { recursive: true });
 
 for (const shot of shots) {
   const data = USE_REAL ? null : demoData({ days: shot.days });
-  const frame = captureFrame({ range: shot.range, width: shot.width, data });
+  const frame = captureFrame({
+    range: shot.range,
+    width: shot.width,
+    data,
+    view: shot.view || "overview",
+  });
   const out = join(ROOT, "docs", `${shot.name}.html`);
   writeFileSync(out, toHtml(frame, { title: shot.title }));
   console.log(`wrote docs/${shot.name}.html`);

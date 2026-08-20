@@ -28,6 +28,32 @@ Press `1` for today, `7` for the week, `3` for the month, `r` to rescan, `q` to 
 It refreshes itself while you work, so you can leave it open in a split pane and watch
 your agents rack up tokens in real time.
 
+Use `↑` and `↓` to pick a project and `⏎` to open its timesheet: what was worked
+on each day, for how long, at what token cost, and which commits came out of it.
+`esc` goes back.
+
+<details>
+<summary><b>See a project's timesheet</b></summary>
+
+<br>
+
+```
+╭ TIMESHEET · acme-checkout-api ──────────────────────────────────── esc back ╮
+
+  51h 22m           1,284             3.04M             7
+  tracked           tasks             tokens            days
+
+      TIME  WORK                       SHARE          TOKENS  CALLS  DETAIL
+  ───────────────────────────────────────────────────────────────────────────
+  2026-08-05                                    4h 46m · 119 tasks · 4 runs
+    1h 37m  Backend work               ██████████  96K   40  fix: null deref in checkout
+    1h 09m  Testing                    ███████▍    68K   29  test_checkout.py
+       51m  Database & migrations      █████▎      51K   21  feat: add refunds table
+       37m  Version control            ███▉        37K   15  git
+```
+
+</details>
+
 <details>
 <summary><b>See the single-day view</b></summary>
 
@@ -307,6 +333,12 @@ the above yourself, it won't take long.
       don't write to `~/.claude/projects`, so custom agents land in the same database
 
 ---
+
+## Changelog
+
+Release notes are in [CHANGELOG.md](CHANGELOG.md). One rule worth knowing: if a
+release changes the **hours it reports for the same input**, that's never a
+patch version. People may be billing from these numbers.
 
 ## Contributing
 
