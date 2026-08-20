@@ -1,6 +1,6 @@
 {
   "name": "aitimesheet",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Local, private timesheet for Claude Code agents: sessions run, tasks done, tokens used. Reads only from ~/.claude/projects on your own machine, nothing leaves it.",
   "type": "module",
   "bin": {
